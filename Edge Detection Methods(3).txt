@@ -158,3 +158,4 @@ else:
     strong_regions = binary_dilation(strong, iterations=1)
     can_approx[weak & strong_regions] = 255
     show(can_approx, f"Canny-approx edges (low={low:.1f}, high={high:.1f})")
+
