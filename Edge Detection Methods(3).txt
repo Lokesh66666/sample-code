@@ -1,0 +1,160 @@
+# Creating and demonstrating image segmentation & edge detection algorithms
+# This runs in a visible Python notebook and will display intermediate steps/results.
+# It attempts to use OpenCV (cv2) when available, but also contains fallbacks for core steps.
+
+import numpy as np
+import matplotlib.pyplot as plt
+from math import sqrt, atan2, degrees
+import warnings
+warnings.filterwarnings("ignore")
+
+# Try to import cv2 (OpenCV). If not available, we'll use fallback implementations.
+try:
+    import cv2
+    cv2_available = True
+    print("OpenCV found: using cv2 for some operations where available.\n")
+except Exception as e:
+    cv2_available = False
+    print("OpenCV (cv2) not available. Using pure-numpy fallbacks for many operations.\n")
+
+# ---------------------- Helper utilities ----------------------
+def to_uint8(img):
+    """Normalize a float image to 0-255 uint8 for display."""
+    if img.dtype == np.uint8:
+        return img
+    mi, ma = float(np.min(img)), float(np.max(img))
+    if ma - mi < 1e-6:
+        return np.zeros_like(img, dtype=np.uint8)
+    out = (255.0 * (img - mi) / (ma - mi)).astype(np.uint8)
+    return out
+
+def show(img, title=""):
+    """Show a single image in its own figure (grayscale)."""
+    plt.figure(figsize=(5,5))
+    plt.title(title)
+    plt.axis('off')
+    if img.ndim == 2:
+        plt.imshow(img, cmap='gray', vmin=0, vmax=255)
+    else:
+        # assume RGB
+        plt.imshow(img)
+    plt.show()
+
+def convolve(img, kernel):
+    """Convolve image with kernel. Prefer cv2.filter2D if available, otherwise use numpy implementation."""
+    if cv2_available:
+        return cv2.filter2D(img.astype(np.float32), -1, kernel.astype(np.float32))
+    # manual convolution (valid for small images/kernels for demonstration)
+    kh, kw = kernel.shape
+    pad_h, pad_w = kh//2, kw//2
+    img_p = np.pad(img, ((pad_h,pad_h),(pad_w,pad_w)), mode='reflect')
+    out = np.zeros_like(img, dtype=np.float32)
+    # flip kernel for true convolution
+    kf = np.flip(np.flip(kernel, axis=0), axis=1)
+    for i in range(img.shape[0]):
+        for j in range(img.shape[1]):
+            patch = img_p[i:i+kh, j:j+kw]
+            out[i,j] = np.sum(patch * kf)
+    return out
+
+# ---------------------- Test image (synthetic) ----------------------
+H = 256
+W = 256
+# Create a smooth horizontal gradient
+grad = np.tile(np.linspace(30,220,W, dtype=np.float32), (H,1))
+
+# Add shapes: rectangle, circle and a diagonal thick line
+img = grad.copy()
+# rectangle
+img[40:120, 30:140] = 240.0
+# circle
+yy, xx = np.mgrid[0:H, 0:W]
+circle = (xx-180)**2 + (yy-60)**2 < 35**2
+img[circle] = 30.0
+# diagonal line
+for k in range(200,240):
+    img[k-5:k+5, k-40:k-36] = 0.0
+
+# Add mild Gaussian noise
+rng = np.random.default_rng(42)
+img = img + rng.normal(scale=6.0, size=img.shape)
+img = np.clip(img, 0, 255).astype(np.uint8)
+
+show(img, "Original synthetic image (grayscale)")
+
+# ---------------------- EDGE DETECTION: Prewitt, Sobel, Roberts, Canny ----------------------
+
+def edge_prewitt(image):
+    # Prewitt kernels
+    kx = np.array([[-1,0,1],[-1,0,1],[-1,0,1]], dtype=np.float32)
+    ky = np.array([[1,1,1],[0,0,0],[-1,-1,-1]], dtype=np.float32)
+    gx = convolve(image, kx)
+    gy = convolve(image, ky)
+    mag = np.hypot(gx, gy)
+    ang = np.arctan2(gy, gx)  # radians
+    return gx, gy, mag, ang
+
+def edge_sobel(image):
+    kx = np.array([[-1,0,1],[-2,0,2],[-1,0,1]], dtype=np.float32)
+    ky = np.array([[1,2,1],[0,0,0],[-1,-2,-1]], dtype=np.float32)
+    gx = convolve(image, kx)
+    gy = convolve(image, ky)
+    mag = np.hypot(gx, gy)
+    ang = np.arctan2(gy, gx)
+    return gx, gy, mag, ang
+
+def edge_roberts(image):
+    # Roberts cross operator (2x2)
+    kx = np.array([[1, 0],[0,-1]], dtype=np.float32)
+    ky = np.array([[0, 1],[-1,0]], dtype=np.float32)
+    # Pad by 1 for 2x2 kernel
+    gx = convolve(image, kx)
+    gy = convolve(image, ky)
+    mag = np.hypot(gx, gy)
+    ang = np.arctan2(gy, gx)
+    return gx, gy, mag, ang
+
+# Prewitt
+pw_gx, pw_gy, pw_mag, pw_ang = edge_prewitt(img.astype(np.float32))
+show(to_uint8(pw_gx), "Prewitt Gx (horizontal response)")
+show(to_uint8(pw_gy), "Prewitt Gy (vertical response)")
+show(to_uint8(pw_mag), "Prewitt gradient magnitude (normalized)")
+
+# Sobel
+sb_gx, sb_gy, sb_mag, sb_ang = edge_sobel(img.astype(np.float32))
+show(to_uint8(sb_gx), "Sobel Gx (horizontal response)")
+show(to_uint8(sb_gy), "Sobel Gy (vertical response)")
+show(to_uint8(sb_mag), "Sobel gradient magnitude (normalized)")
+
+# Roberts
+rb_gx, rb_gy, rb_mag, rb_ang = edge_roberts(img.astype(np.float32))
+show(to_uint8(rb_gx), "Roberts Gx (2x2)")
+show(to_uint8(rb_gy), "Roberts Gy (2x2)")
+show(to_uint8(rb_mag), "Roberts gradient magnitude (normalized)")
+
+# Canny (use OpenCV if available; otherwise approximate using Sobel magnitude + hysteresis)
+if cv2_available:
+    # compute Canny - choose thresholds using median heuristic
+    blur = cv2.GaussianBlur(img, (5,5), 1.0)
+    show(blur, "Gaussian blur (for Canny smoothing)")
+    v = np.median(blur)
+    lower = int(max(0, 0.66 * v))
+    upper = int(min(255, 1.33 * v))
+    can = cv2.Canny(blur, lower, upper)
+    show(can, f"Canny edges (lower={lower}, upper={upper})")
+else:
+    # approximate Canny: use sobel magnitude + simple double-threshold hysteresis
+    show(to_uint8(sb_mag), "Sobel magnitude (used as Canny approximation)")
+    # double thresholds
+    high = np.percentile(sb_mag, 90)
+    low = 0.5 * high
+    strong = (sb_mag >= high)
+    weak = (sb_mag >= low) & (sb_mag < high)
+    can_approx = np.zeros_like(img, dtype=np.uint8)
+    can_approx[strong] = 255
+    # simple connectivity promotion for weak edges (very simple)
+    from scipy.ndimage import binary_dilation, label
+    strong_labels, _ = label(strong)
+    strong_regions = binary_dilation(strong, iterations=1)
+    can_approx[weak & strong_regions] = 255
+    show(can_approx, f"Canny-approx edges (low={low:.1f}, high={high:.1f})")
