@@ -1,0 +1,72 @@
+# Morphological Processing - Erosion and Dilation
+# Author: Nithyasai Sivakumar
+# Institution: Kathir College of Engineering, Coimbatore
+# Lab: Image Processing using OpenCV
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- Utility function to show images ---
+def show(img, title=""):
+    plt.figure(figsize=(5,5))
+    plt.title(title)
+    plt.axis('off')
+    if len(img.shape) == 2:
+        plt.imshow(img, cmap='gray')
+    else:
+        plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    plt.show()
+
+# --- Step 1: Create Synthetic Binary Image ---
+H, W = 320, 420
+img = np.zeros((H, W), dtype=np.uint8)
+
+# Draw white shapes
+cv2.rectangle(img, (40, 40), (190, 170), 255, -1)   # rectangle
+cv2.circle(img, (300, 100), 60, 255, -1)            # circle
+cv2.ellipse(img, (220, 240), (80,30), 25, 0, 360, 255, -1)  # ellipse
+
+# Add a black hole inside rectangle (for closing effect)
+cv2.rectangle(img, (90, 80), (140, 120), 0, -1)
+
+# Add random white noise (salt)
+noise = np.random.randint(0, 2, (H, W), dtype=np.uint8)
+img[noise == 1] = 255
+
+show(img, "Original Image with Shapes + Noise")
+
+# --- Step 2: Threshold the Image ---
+_, binary = cv2.threshold(img, 128, 255, cv2.THRESH_BINARY)
+show(binary, "Binary Image")
+
+# --- Step 3: Define Structuring Elements ---
+se_rect = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+se_ellipse = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
+
+show((se_rect*255).astype(np.uint8), "Structuring Element (3x3 Rectangle)")
+show((se_ellipse*255).astype(np.uint8), "Structuring Element (5x5 Ellipse)")
+
+# --- Step 4: Perform Erosion ---
+erosion = cv2.erode(binary, se_rect, iterations=2)
+show(erosion, "Erosion Result (Rect 3x3, 2 Iterations)")
+
+# --- Step 5: Perform Dilation ---
+dilation = cv2.dilate(binary, se_rect, iterations=2)
+show(dilation, "Dilation Result (Rect 3x3, 2 Iterations)")
+
+# --- Step 6: Opening (Erosion → Dilation) ---
+opening = cv2.morphologyEx(binary, cv2.MORPH_OPEN, se_rect)
+show(opening, "Opening Result (Removes White Noise)")
+
+# --- Step 7: Closing (Dilation → Erosion) ---
+closing = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, se_rect)
+show(closing, "Closing Result (Fills Small Holes)")
+
+# --- Step 8: Morphological Gradient ---
+gradient = cv2.morphologyEx(binary, cv2.MORPH_GRADIENT, se_rect)
+show(gradient, "Morphological Gradient (Edge Extraction)")
+
+print("✅ Morphological Processing Completed Successfully")
+print("Erosion → Shrinks objects; Dilation → Expands objects.")
+print("Opening removes noise; Closing fills holes; Gradient extracts boundaries.")
