@@ -1,0 +1,35 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Step 1: Read and preprocess
+img = cv2.imread('road.jpg')
+gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+blur = cv2.GaussianBlur(gray, (5,5), 1)
+
+# Step 2: Edge detection (Canny)
+edges = cv2.Canny(blur, 50, 150)
+
+# Step 3: Hough Line Transform
+lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=80, minLineLength=50, maxLineGap=10)
+
+# Step 4: Draw detected lines
+line_img = img.copy()
+if lines is not None:
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        cv2.line(line_img, (x1,y1), (x2,y2), (0,255,0), 2)
+
+# Step 5: Visualize each step
+titles = ['Original Image', 'Gray Image', 'Blurred Image', 'Canny Edges', 'Hough Line Transform']
+images = [img, gray, blur, edges, line_img]
+
+plt.figure(figsize=(12,10))
+for i in range(5):
+    plt.subplot(2,3,i+1)
+    plt.imshow(cv2.cvtColor(images[i], cv2.COLOR_BGR2RGB) if i!=1 and i!=3 else images[i], cmap='gray')
+    plt.title(titles[i])
+    plt.axis('off')
+
+plt.tight_layout()
+plt.show()
